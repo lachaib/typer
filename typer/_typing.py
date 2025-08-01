@@ -35,6 +35,20 @@ else:
     def is_union(tp: Optional[Type[Any]]) -> bool:
         return tp is Union or tp is types.UnionType  # noqa: E721
 
+if sys.version_info >= (3, 12):
+    from typing import TypeAliasType
+else:
+    from typing_extensions import TypeAliasType
+
+def extract_type_from_alias(
+    type_: Type[Any],
+) -> Type[Any]:
+    """
+    Extracts the type from a TypeAliasType, if applicable.
+    """
+    if isinstance(type_, TypeAliasType):
+        return extract_type_from_alias(type_.__value__)
+    return type_
 
 __all__ = (
     "NoneType",
@@ -45,6 +59,7 @@ __all__ = (
     "is_union",
     "Annotated",
     "Literal",
+    "TypeAliasType",
     "get_args",
     "get_origin",
     "get_type_hints",

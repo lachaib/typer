@@ -17,7 +17,7 @@ from uuid import UUID
 import click
 from typer._types import TyperChoice
 
-from ._typing import get_args, get_origin, is_union
+from ._typing import Annotated, TypeAliasType, extract_type_from_alias, get_args, get_origin, is_union
 from .completion import get_completion_inspect_parameters
 from .core import (
     DEFAULT_MARKUP_MODE,
@@ -708,6 +708,9 @@ def get_click_type(
     if parameter_info.click_type is not None:
         return parameter_info.click_type
 
+    elif isinstance(annotation, TypeAliasType):
+        return get_click_type(annotation=annotation.__value__, parameter_info=parameter_info)
+
     elif parameter_info.parser is not None:
         return click.types.FuncParamType(parameter_info.parser)
 
@@ -805,6 +808,13 @@ def lenient_issubclass(
 ) -> bool:
     return isinstance(cls, type) and issubclass(cls, class_or_tuple)
 
+def unwrap_type(type_: Type[Any]) -> type:
+    """Unwraps the type from layers of type aliases and annotations"""
+    type_ = extract_type_from_alias(type_)
+    if get_origin(type_) is Annotated:
+        # Handle Annotated types
+        return unwrap_type(get_args(type_)[0])
+    return type_
 
 def get_click_param(
     param: ParamMeta,
@@ -832,7 +842,7 @@ def get_click_param(
         annotation = param.annotation
     else:
         annotation = str
-    main_type = annotation
+    main_type = unwrap_type(annotation)
     is_list = False
     is_tuple = False
     parameter_type: Any = None
@@ -848,11 +858,11 @@ def get_click_param(
                     continue
                 types.append(type_)
             assert len(types) == 1, "Typer Currently doesn't support Union types"
-            main_type = types[0]
+            main_type = unwrap_type(types[0])
             origin = get_origin(main_type)
         # Handle Tuples and Lists
         if lenient_issubclass(origin, List):
-            main_type = get_args(main_type)[0]
+            main_type = unwrap_type(get_args(main_type)[0])
             assert not get_origin(main_type), (
                 "List types with complex sub-types are not currently supported"
             )
@@ -860,6 +870,7 @@ def get_click_param(
         elif lenient_issubclass(origin, Tuple):  # type: ignore
             types = []
             for type_ in get_args(main_type):
+                type_ = unwrap_type(type_)
                 assert not get_origin(type_), (
                     "Tuple types with complex sub-types are not currently supported"
                 )
